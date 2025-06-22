@@ -42,7 +42,8 @@ class PenEventLoop():
 
     def start_devices(self, scr):
         try:
-            self.pen_dev = self.find_device(evdev.ecodes.BTN_STYLUS)
+            #self.pen_dev = self.find_device(evdev.ecodes.BTN_STYLUS2)
+            self.pen_dev = self.find_device(axis=evdev.ecodes.ABS_PRESSURE)
         except NameError:
             return
         except FileNotFoundError:
@@ -70,10 +71,13 @@ class PenEventLoop():
             if self.buttons_thread:
                 self.buttons_thread.start()
 
-    def find_device(self, button):
+    def find_device(self, button=None, axis=None):
             for name in evdev.list_devices():
                 dev = evdev.InputDevice(name)
-                if 1 in dev.capabilities()[0] and button in dev.capabilities()[1]:
+                if ((button and 1 in dev.capabilities()[0] and button in dev.capabilities()[1]) or
+                    (axis and 3 in dev.capabilities()[0] and axis in [x[0] for x in dev.capabilities()[3]])):
+                    if(False):
+                        print(dev)
                     return dev
             return None
 
