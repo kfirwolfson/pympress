@@ -29,14 +29,19 @@ from __future__ import print_function, unicode_literals
 import logging
 logger = logging.getLogger(__name__)
 
-import subprocess
+import contextlib
 import importlib
 import os
+import pathlib
+import subprocess
 import sys
 
-if not getattr(sys, 'frozen', False):
-    # doesn’t play too well with cx_Freeze
-    import pkg_resources
+if sys.version_info >= (3, 9):
+    # Using parts introduced in 3.9
+    import importlib.resources as importlib_resources
+else:
+    # Backport dependency
+    import importlib_resources
 
 IS_POSIX = os.name == 'posix'
 IS_MAC_OS = sys.platform == 'darwin'
@@ -54,7 +59,7 @@ try:
 except NameError:
     PermissionError = OSError
 
-
+_opened_resources = contextlib.ExitStack()
 
 def get_pympress_meta():
     """ Get metadata (version, etc) from pympress' __init__.py or git describe.
@@ -65,24 +70,26 @@ def get_pympress_meta():
     module = importlib.import_module('pympress.__init__')
     info = {'version': module.__version__, 'contributors': module.__author__}
 
-    if getattr(sys, 'frozen', False):
+    if getattr(sys, 'frozen', False) or not getattr(module, '__file__', None):
+        return info
+
+    git_dir = pathlib.Path(module.__file__).parents[1] / '.git'
+    if not git_dir.exists():
         return info
 
     # Try and get a git describe output in case we are on a dirty/editable version
     try:
-        path = pkg_resources.get_distribution('pympress').module_path
-
-        command = 'git --git-dir={}/.git describe --tags --long --dirty'.split()
-        command[1] = command[1].format(path)  # after spliting in case path has whitespace
+        command = 'git --git-dir={} describe --tags --long --dirty'.split()
+        command[1] = command[1].format(git_dir)  # after splitting in case path has whitespace
 
         git_version = subprocess.check_output(command, stderr = subprocess.DEVNULL)
 
         # answer format is: {last tag}-{commit count since tag}-g{commit sha1 hash}[-dirty]
-        tag, count, sha, dirty = (git_version + '-').decode('utf-8').strip().split('-', 3)
+        tag, count, sha, dirty = (git_version.decode('utf-8') + '-').strip().split('-', 3)
         if count != '0' or dirty:
             info['version'] = '{}+{}@{}'.format(tag.lstrip('v'), count, sha.lstrip('g'))
 
-    except (pkg_resources.DistributionNotFound, subprocess.CalledProcessError):
+    except subprocess.CalledProcessError:
         logger.debug('Failed to get git describe output', exc_info = True)
 
     finally:
@@ -90,23 +97,18 @@ def get_pympress_meta():
 
 
 def __get_resource_path(*path_parts):
-    """ Return the resource path based on whether its frozen or not.
-
-    Paths parts given should be relative to the pympress package dir.
+    """ Return the path to a resource, ensuring it was made available as a file for the duration of the program.
 
     Args:
         name (`tuple` of `str`): The directories and filename that constitute the path
         to the resource, relative to the pympress distribution
 
     Returns:
-        `str`: The path to the resource
+        :class:`~pathlib.Path`: The path to the resource
     """
-    if getattr(sys, 'frozen', False):
-        return os.path.join(os.path.dirname(sys.executable), *path_parts)
-    else:
-        req = pkg_resources.Requirement.parse('pympress')
-        return pkg_resources.resource_filename(req, '/'.join(('pympress',) + path_parts))
-
+    # Introduced in 3.9
+    resource = importlib_resources.files('pympress').joinpath(*path_parts)
+    return _opened_resources.enter_context(importlib_resources.as_file(resource)).as_posix()
 
 def __get_resource_list(*path_parts):
     """ Return the list of elements in a directory based on whether its frozen or not.
@@ -123,8 +125,8 @@ def __get_resource_list(*path_parts):
     if getattr(sys, 'frozen', False):
         return os.listdir(os.path.join(os.path.dirname(sys.executable), *path_parts))
     else:
-        req = pkg_resources.Requirement.parse('pympress')
-        return pkg_resources.resource_listdir(req, '/'.join(('pympress',) + path_parts))
+        resource = importlib_resources.files('pympress').joinpath(*path_parts)
+        return os.listdir(resource)
 
 
 def get_latex_dict():
