@@ -38,7 +38,7 @@ import platform
 from pympress import util
 
 import faulthandler
-faulthandler.enable(True)
+faulthandler.enable()
 
 # Setup logging, and catch all uncaught exceptions in the log file.
 # Load pympress.util early (OS and path-specific things) to load and setup gettext translation asap.
