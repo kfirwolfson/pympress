@@ -567,21 +567,42 @@ class UI(builder.Builder):
                     or self.config.getboolean('content', 'start_fullscreen'):
                 logger.warning(_('Not starting content or presenter window full screen ' +
                                  'because there is only one monitor'))
+        try:
+            p_position = json.loads(self.config.get("presenter","position"))
+            if type(p_position) != list or len(p_position) != 4 or p_position[2] <= 0:
+                p_position = None
+        except:
+            p_position = None
 
-        p_bounds = screen.get_monitor(p_monitor).get_geometry()
-        self.p_win.move(p_bounds.x, p_bounds.y)
-        self.p_win.resize(p_bounds.width, p_bounds.height)
-        if p_full:
-            self.p_win.fullscreen()
+        if p_position and not p_full:
+            self.p_win.move(p_position[0],p_position[1])
+            self.p_win.resize(p_position[2],p_position[3])
         else:
-            self.p_win.maximize()
+            p_bounds = screen.get_monitor(p_monitor).get_geometry()
+            self.p_win.move(p_bounds.x, p_bounds.y)
+            self.p_win.resize(p_bounds.width, p_bounds.height)
+            if p_full:
+                self.p_win.fullscreen()
+            else:
+                self.p_win.maximize()
 
-        c_bounds = screen.get_monitor(c_monitor).get_geometry()
-        self.c_win.move(c_bounds.x, c_bounds.y)
-        self.c_win.resize(c_bounds.width, c_bounds.height)
-        if c_full:
-            self.c_win.fullscreen()
-            GLib.idle_add(lambda: util.set_screensaver(True, self.c_win.get_window()))
+        try:
+            c_position = json.loads(self.config.get("content","position"))
+            if type(c_position) != list or len(c_position) != 4 or c_position[2] <= 0:
+                c_position = None
+        except:
+            c_position = None
+
+        if c_position and not c_full:
+            self.c_win.move(c_position[0],c_position[1])
+            self.c_win.resize(c_position[2],c_position[3])
+        else:
+            c_bounds = screen.get_monitor(c_monitor).get_geometry()
+            self.c_win.move(c_bounds.x, c_bounds.y)
+            self.c_win.resize(c_bounds.width, c_bounds.height)
+            if c_full:
+                self.c_win.fullscreen()
+                GLib.idle_add(lambda: util.set_screensaver(True, self.c_win.get_window()))
 
 
     def show_shortcuts(self, *args):
