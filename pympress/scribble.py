@@ -189,6 +189,8 @@ class Scribbler(builder.Builder):
     #: Position in undo stack. Allows re-do
     undo_stack_pos = 0
 
+    pen_last_moved = False
+
     selected = []
     select_rect = [[],[]]
     clipboard = None
@@ -222,6 +224,7 @@ class Scribbler(builder.Builder):
         self.get_slide_point = builder.get_callback_handler('zoom.get_slide_point')
         self.start_zooming = builder.get_callback_handler('zoom.start_zooming')
         self.stop_zooming = builder.get_callback_handler('zoom.stop_zooming')
+        self.autohide_pen_pointer = config.getboolean('content', 'autohide_pen_pointer', fallback=True)
 
         self.connect_signals(self)
 
@@ -275,14 +278,18 @@ class Scribbler(builder.Builder):
         return False
 
     def evdev_callback_pen(self, point):
+        self.pen_last_moved = True
         self.track_scribble(point, (False, 0))
         return False
 
     def evdev_callback_pointer(self, point):
-        self.set_pointer(point)
+        self.pen_last_moved = True
+        if point or self.autohide_pen_pointer:
+            self.set_pointer(point)
         return False
 
     def evdev_callback_track(self, data):
+        self.pen_last_moved = True
         self.toggle_scribble(None, *data, always=True)
         return False
 

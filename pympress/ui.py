@@ -265,6 +265,8 @@ class UI(builder.Builder):
         self.hlines = self.config.getfloat('presenter', 'horizontal_lines')
         self.vlines = self.config.getfloat('presenter', 'vertical_lines')
 
+        self.one_pointer = self.config.getboolean('content', 'one_pointer', fallback=True)
+
         self.scribbler.latex_dict = json.load(open(util.get_latex_dict()))
         self.scribbler.latex_macros = {
             "latex": { "ctrl": {}, "alt": {}, "altctrl": {}, },
@@ -1190,13 +1192,15 @@ class UI(builder.Builder):
 
         if widget is self.c_da:
             # do not use the zoom matrix for the pointer, it is relative to the screen not the slide
-            self.laser.render_pointer(cairo_context, ww, wh)
+            if not self.one_pointer or not self.scribbler.pen_last_moved:
+                self.laser.render_pointer(cairo_context, ww, wh)
 
-            if self.pen_pointer[0]:
-                x = self.pen_pointer[0][0] * ww - self.pen_pointer_c.get_width() / 2
-                y = self.pen_pointer[0][1] * wh - self.pen_pointer_c.get_height() / 2
-                Gdk.cairo_set_source_pixbuf(cairo_context, self.pen_pointer_c, x, y)
-                cairo_context.paint()
+            if not self.one_pointer or self.scribbler.pen_last_moved:
+                if self.pen_pointer[0]:
+                    x = self.pen_pointer[0][0] * ww - self.pen_pointer_c.get_width() / 2
+                    y = self.pen_pointer[0][1] * wh - self.pen_pointer_c.get_height() / 2
+                    Gdk.cairo_set_source_pixbuf(cairo_context, self.pen_pointer_c, x, y)
+                    cairo_context.paint()
 
         elif widget is self.p_da_cur:
             pos = self.pen_pointer[0] if self.pen_pointer[0] else \
@@ -1394,7 +1398,7 @@ class UI(builder.Builder):
     def track_motions(self, widget, event):
         """ Track mouse motion events.
 
-        Handles mouse motions on the "about" menu.
+        Handles mouse motions on the slides.
 
         Args:
             widget (:class:`~Gtk.Widget`):  the widget that received the mouse motion
@@ -1403,6 +1407,8 @@ class UI(builder.Builder):
         Returns:
             `bool`: whether the event was consumed
         """
+
+        self.scribbler.pen_last_moved = False
         if self.zoom.track_zoom_target(widget, event):
             return True
         elif self.scribbler.track_scribble(self.zoom.get_slide_point(widget, event), event.get_button()):
