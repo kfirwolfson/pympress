@@ -610,7 +610,7 @@ class Scribbler(builder.Builder):
         self.redraw_current_slide()
 
     def set_pointer(self, point):
-        if self.have_pen and self.pen_pointer is not None and point:
+        if self.have_pen and self.pen_pointer is not None:
             # The event thread might start running a bit too early
             self.pen_pointer[0] = point
             self.redraw_current_slide()
