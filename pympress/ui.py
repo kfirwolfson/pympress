@@ -267,7 +267,7 @@ class UI(builder.Builder):
 
         self.one_pointer = self.config.getboolean('content', 'one_pointer', fallback=True)
 
-        self.scribbler.latex_dict = json.load(open(util.get_latex_dict()))
+        self.scribbler.latex_dict = json.load(open(util.get_latex_dict(), encoding='utf-8'))
         self.scribbler.latex_macros = {
             "latex": { "ctrl": {}, "alt": {}, "altctrl": {}, },
             "markup": { "ctrl": {}, "alt": {}, "altctrl": {}, },

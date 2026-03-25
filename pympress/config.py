@@ -152,12 +152,12 @@ class Config(configparser.ConfigParser, object):  # python 2 fix
         super(Config, config).__init__()
 
         # populate values first from the default config file, then from the proper one
-        config.read(util.get_default_config())
+        config.read(util.get_default_config(), encoding='utf-8')
         config.load_window_layouts()
 
         all_commands = dict(config.items('shortcuts')).keys()
 
-        config.read(config.path_to_config(True))
+        config.read(config.path_to_config(True), encoding='utf-8')
         config.upgrade()
         config.load_window_layouts()
 
