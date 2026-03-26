@@ -20,103 +20,20 @@
 #       Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
 #       MA 02110-1301, USA.
 
-""" pympress setup script.
+""" pympress cx_Freeze build script.
 
-Mostly wrapping logic for freezing (with cx_Freeze for windows builds).
-All configuration is in setup.cfg.
+This file is only needed for cx_Freeze frozen builds (Windows MSI/EXE).
+Normal installation is handled by pyproject.toml:
+
+    pip install .
+    pip install -e .
+    pip install -r requirements.txt
 """
 
 import os
 import sys
 import glob
 from ctypes.util import find_library
-import setuptools
-
-from setuptools.command.develop import develop
-from setuptools.command.install import install
-from setuptools.command.bdist_rpm import bdist_rpm
-
-
-def find_index_startstring(haystack, needle, start = 0, stop = sys.maxsize):
-    """ Return the index of the first string in haystack starting with needle, or raise ValueError if none match.
-    """
-    try:
-        return next(n for n, v in enumerate(haystack[start:stop], start) if v.startswith(needle))
-    except StopIteration:
-        raise ValueError('No string starts with ' + needle)
-
-
-class PatchedRpmDist(bdist_rpm):
-    """ Patched bdist rpm to avoid running seds and breaking up the build system
-    """
-
-    user_options = bdist_rpm.user_options + [
-        ('recommends=', None, "capabilities recommendd by this package"),
-        ('suggests=', None, "capabilities suggestd by this package"),
-    ]
-
-    recommends = None
-    suggests = None
-
-    def finalize_package_data(self):
-        """ Add recommends/suggests option validation
-        """
-        bdist_rpm.finalize_package_data(self)
-
-        self.ensure_string_list('recommends')
-        self.ensure_string_list('suggests')
-
-
-    def _make_spec_file(self):
-        # Make the package name python3-pympress instead of pympress
-        # NB: %{name} evaluates to the RPM package name
-        spec = [
-            line.replace('%{name}', '%{pythonname}')
-                .replace('define name ', 'define pythonname ')
-                .replace('Name: %{pythonname}', 'Name: python3-%{pythonname}')
-            for line in bdist_rpm._make_spec_file(self) if not line.startswith('Group:')
-        ]
-
-        insert_pos = find_index_startstring(spec, 'Requires:') + 1
-        insert = [
-            # Define what this package provides in terms of capabilities
-            'Provides: python3dist(%{pythonname}) = %{version}',
-            'Provides: python%{python3_version}dist(%{pythonname}) = %{version}',
-
-            # For Fedora, this adds python-name to provides if python3 is the default
-            '%{?python_provide:%python_provide python3-%{pythonname}}',
-        ]
-
-        if self.recommends:
-            insert.append('Recommends: ' + ' '.join(self.recommends))
-
-        if self.suggests:
-            insert.append('Suggests: ' + ' '.join(self.suggests))
-
-        # Roll our own py3_dist if it doesn’t exist on this platform, only for requires.
-        # Also define typelib_deps if we are on suse or mageia, to specify dependencies using typelib capabilities.
-        return [
-            '%define normalize() %(echo %* | tr "[:upper:]_ " "[:lower:]--")',
-            '%{?!py3_dist:%define py3_dist() (python%{python3_version}dist(%{normalize %1}) or python3-%1)}',
-            '%{?suse_version:%define typelib_deps 1}', '%{?mga_version:%define typelib_deps 1}', ''
-        ] + spec[:insert_pos] + insert + spec[insert_pos:]
-
-
-
-class PatchedDevelop(develop):
-    """ Patched installation for development mode to build translations .mo files. """
-    def run(self):
-        """ Run compile_catalog before running (parent) develop command. """
-        self.distribution.run_command('compile_catalog')
-        develop.run(self)
-
-class PatchedInstall(install):
-    """Patched installation for installation mode to build translations .mo files. """
-    def run(self):
-        """ Run compile_catalog before running (parent) install command. """
-        if not self.single_version_externally_managed:
-            self.distribution.run_command('compile_catalog')
-        install.run(self)
 
 
 # All functions listing resources return a list of pairs: (system path, distribution relative path)
@@ -165,9 +82,6 @@ def dlls():
     libplc4.dll libplds4.dll libpoppler-98.dll libpoppler-cpp-0.dll libpoppler-glib-8.dll libpsl-5.dll \
     libpython3.8.dll libstdc++-6.dll libthai-0.dll libtiff-5.dll libunistring-2.dll libwinpthread-1.dll \
     libzstd.dll nss3.dll nssutil3.dll smime3.dll'
-    # these appear superfluous, though unexpectedly so:
-    # libcairo-2.dll libcairo-gobject-2.dll libfontconfig-1.dll libfreetype-6.dll libiconv-2.dll
-    # libgettextlib-0-19-8-1.dll libgettextpo-0.dll libgettextsrc-0-19-8-1.dll libintl-8.dll libjasper-4.dll
 
     include_files = []
     for lib in libs.split():
@@ -235,69 +149,35 @@ def pympress_resources():
 
 if __name__ == '__main__':
 
-    options = {}
+    from cx_Freeze import setup, Executable
 
     with open('README.md') as f:
-        readme = f.readlines()
-        options['long_description'] = ''.join(readme)
+        long_description = f.read()
 
+    setup_opts = {
+        'long_description': long_description,
+        'options': {
+            'build_exe': {
+                'includes': [],
+                'excludes': ['tkinter'],
+                'packages': ['codecs', 'gi', 'vlc', 'watchdog'],
+                'include_files': gtk_resources() + dlls() + pympress_resources(),
+                'silent': True
+            }
+        },
+        'executables': [Executable(os.path.join('pympress', '__main__.py'), targetName='pympress.exe',
+                                   base='Win32GUI', shortcutDir='ProgramMenuFolder', shortcutName='pympress',
+                                   icon=os.path.join('pympress', 'share', 'pixmaps', 'pympress.ico'))]
+    }
 
-    # Check our options: whether to freeze, and whether to include VLC resources (DLLs, plugins, etc).
-    if '--freeze' in sys.argv[1:]:
-        sys.argv.remove('--freeze')
+    if check_vlc_redistribution():
+        try:
+            setup_opts['options']['build_exe']['include_files'] += vlc_resources()
+        except ImportError:
+            print('ERROR: VLC python module not available!')
+            exit(-1)
+        except Exception as e:
+            print('ERROR: Cannot include VLC: ' + str(e))
+            exit(-1)
 
-        print('Using cx_Freeze.setup():', file=sys.stderr)
-        from cx_Freeze import setup, Executable
-
-        # List all resources we'll distribute
-        setup_opts = {
-            **options,
-            'options': {
-                'build_exe': {
-                    'includes': [],
-                    'excludes': ['tkinter'],
-                    'packages': ['codecs', 'gi', 'vlc', 'watchdog'],
-                    'include_files': gtk_resources() + dlls() + pympress_resources(),
-                    'silent': True
-                }
-            },
-            'executables': [Executable(os.path.join('pympress', '__main__.py'), targetName='pympress.exe',
-                                       base='Win32GUI', shortcutDir='ProgramMenuFolder', shortcutName='pympress',
-                                       icon=os.path.join('pympress', 'share', 'pixmaps', 'pympress.ico'))]
-        }
-
-        if check_vlc_redistribution():
-            try:
-                setup_opts['options']['build_exe']['include_files'] += vlc_resources()
-            except ImportError:
-                print('ERROR: VLC python module not available!')
-                exit(-1)
-            except Exception as e:
-                print('ERROR: Cannot include VLC: ' + str(e))
-                exit(-1)
-
-        setup(**setup_opts)
-    else:
-        # Normal behaviour: use setuptools, load options from setup.cfg
-        print('Using setuptools.setup():', file=sys.stderr)
-
-        options['cmdclass'] = {'develop': PatchedDevelop, 'install': PatchedInstall, 'bdist_rpm': PatchedRpmDist}
-
-        setuptols_version = tuple(int(n) for n in setuptools.__version__.split('.'))
-        # older versions are missing out!
-        if setuptols_version >= (30, 5):
-            options['data_files'] = [
-                ('share/pixmaps/', ['pympress/share/pixmaps/pympress.png']),
-                ('share/applications/', ['pympress/share/applications/pympress.desktop']),
-            ]
-
-        setuptools.setup(**options)
-
-
-##
-# Local Variables:
-# mode: python
-# indent-tabs-mode: nil
-# py-indent-offset: 4
-# fill-column: 80
-# end:
+    setup(**setup_opts)

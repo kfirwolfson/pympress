@@ -21,7 +21,7 @@ jobs:
         sudo apt-get install -qy jq
         pip install -e .[babel]
     - name: Extract
-      run: python setup.py extract_messages
+      run: pybabel extract -F pympress/share/locale/babel_mapping.cfg -o pympress/share/locale/pympress.pot --no-location --no-wrap --sort-output --omit-header .
     - name: Upload
       env:
         poeditor_api_token: ${{ secrets.POEDITOR_API_TOKEN }}
@@ -41,13 +41,13 @@ jobs:
       run: |
         sudo apt-get update -q
         sudo apt-get install -qy jq gobject-introspection libgirepository-1.0-1 gir1.2-gtk-3.0 gir1.2-glib-2.0 gir1.2-gstreamer-1.0 gir1.2-poppler-0.18 python3-pip python3-setuptools python3-wheel libgirepository1.0-dev
-        pip install pygobject pycairo .[build_sphinx]
+        pip install pygobject pycairo .[docs]
     - name: Build
       env:
         poeditor_api_token: ${{ secrets.POEDITOR_API_TOKEN }}
       run: |
         ./scripts/poedit.sh contributors
-        python setup.py build_sphinx
+        sphinx-build -b html docs build/sphinx/html
         tar czf pympress-docs.tar.gz -C build/sphinx/html/ .
     - name: Upload
       uses: actions/upload-artifact@v1

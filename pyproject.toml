@@ -1,0 +1,84 @@
+[build-system]
+requires = ["setuptools>=64", "babel", "babelgladeextractor"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pympress"
+dynamic = ["version"]
+description = "A simple and powerful dual-screen PDF reader designed for presentations."
+readme = "README.md"
+license = "GPL-2.0-or-later"
+requires-python = ">=3"
+authors = [
+    {name = "Cimbali", email = "me@cimba.li"},
+    {name = "Thomas Jost"},
+    {name = "Christof Rath"},
+    {name = "Epithumia"},
+]
+keywords = [
+    "pdf-viewer", "beamer", "presenter", "slide", "projector",
+    "pdf-reader", "presentation", "python", "poppler", "gtk", "pygi", "vlc",
+]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Environment :: X11 Applications :: GTK",
+    "Intended Audience :: Education",
+    "Intended Audience :: End Users/Desktop",
+    "Intended Audience :: Information Technology",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: GNU General Public License v2 or later (GPLv2+)",
+    "Natural Language :: English",
+    "Natural Language :: French",
+    "Natural Language :: German",
+    "Natural Language :: Polish",
+    "Natural Language :: Spanish",
+    "Natural Language :: Czech",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python",
+    "Topic :: Multimedia :: Graphics :: Presentation",
+    "Topic :: Multimedia :: Graphics :: Viewers",
+]
+dependencies = [
+    "watchdog",
+    "numpy",
+]
+
+[project.optional-dependencies]
+docs = [
+    "sphinx",
+    "recommonmark",
+    "sphinxcontrib-napoleon",
+    "sphinx-rtd-theme",
+]
+babel = [
+    "babel",
+    "babelgladeextractor",
+]
+vlc = [
+    "python-vlc",
+]
+
+[project.urls]
+Homepage = "https://github.com/Cimbali/pympress/"
+Issues = "https://github.com/Cimbali/pympress/issues/"
+Documentation = "https://cimbali.github.io/pympress/"
+"Source Code" = "https://github.com/Cimbali/pympress/"
+Download = "https://github.com/Cimbali/pympress/releases/latest"
+
+[project.gui-scripts]
+pympress = "pympress.__main__:main"
+
+[tool.setuptools.dynamic]
+version = {attr = "pympress.__version__"}
+
+[tool.setuptools.packages.find]
+include = ["pympress", "pympress.*"]
+
+[tool.setuptools.package-data]
+pympress = [
+    "share/defaults.conf",
+    "share/xml/*.glade",
+    "share/css/*.css",
+    "share/pixmaps/*.png",
+    "share/locale/*/LC_MESSAGES/pympress.mo",
+]

@@ -7,9 +7,9 @@ pacman -S --noprogressbar --noconfirm --needed mingw-w64-$arch-$py-pip mingw-w64
 $py -m pip install --disable-pip-version-check --upgrade pip
 $py -m pip install watchdog python-vlc babel cx_Freeze
 
-$py setup.py compile_catalog
-$py setup.py --freeze --$vlc build_exe
-$py setup.py --freeze --$vlc bdist_msi --add-to-path True --target-name pympress-`git describe --tags --always --abbrev=0`-$arch.msi
+pybabel compile -d pympress/share/locale/ -D pympress --statistics
+$py setup.py --$vlc build_exe
+$py setup.py --$vlc bdist_msi --add-to-path True --target-name pympress-`git describe --tags --always --abbrev=0`-$arch.msi
 
 # Build a zip from the build_exe outputs
 cd build

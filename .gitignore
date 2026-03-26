@@ -13,3 +13,6 @@ tpym
 pympress/share/pixmaps/icons
 core.*
 empty.*
+
+.venv/
+.vscode/
