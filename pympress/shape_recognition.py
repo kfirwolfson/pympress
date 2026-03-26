@@ -38,7 +38,7 @@ import numpy as np
 
 # --- Thresholds ---
 LINE_MAX_DEVIATION_RATIO = 0.05
-ELLIPSE_RADIAL_STD_RATIO = 0.15
+ELLIPSE_RADIAL_STD_RATIO = 0.25
 CIRCLE_AXIS_RATIO = 0.90
 CLOSURE_DISTANCE_RATIO = 0.20
 RECT_ANGLE_TOLERANCE = 25  # degrees
@@ -139,9 +139,9 @@ def fit_ellipse(pts):
 
     # In the principal frame, estimate semi-axes from the extent of the points.
     # For a uniform ellipse traced by hand, the semi-axis is ~ max extent along each axis.
-    # Use a robust estimator: percentile-based half-range
-    semi_a = float(np.percentile(np.abs(transformed[:, 0]), 95))
-    semi_b = float(np.percentile(np.abs(transformed[:, 1]), 95))
+    # Use a robust estimator: percentile-based half-range (98th to avoid underestimation from noise)
+    semi_a = float(np.percentile(np.abs(transformed[:, 0]), 98))
+    semi_b = float(np.percentile(np.abs(transformed[:, 1]), 98))
 
     if semi_a < 1e-9 or semi_b < 1e-9:
         return None
@@ -231,6 +231,38 @@ def _angle_between(v1, v2):
     return math.degrees(math.acos(cos_a))
 
 
+def _remove_collinear(vertices, epsilon):
+    """ Remove vertices that are collinear with their neighbours.
+
+    A vertex is considered collinear (i.e. it lies on a straight side rather
+    than at a real corner) when its perpendicular distance to the line through
+    its two neighbours is less than *epsilon*.
+
+    Args:
+        vertices (`numpy.ndarray`): Mx2 array of polygon vertices
+        epsilon (`float`): distance threshold
+
+    Returns:
+        `numpy.ndarray`: filtered array with collinear vertices removed
+    """
+    keep = []
+    n = len(vertices)
+    for i in range(n):
+        prev_pt = vertices[(i - 1) % n]
+        curr_pt = vertices[i]
+        next_pt = vertices[(i + 1) % n]
+        edge = next_pt - prev_pt
+        edge_len = np.linalg.norm(edge)
+        if edge_len < 1e-12:
+            keep.append(i)
+            continue
+        # Perpendicular distance from curr_pt to the line prev→next
+        dist = abs(np.cross(edge, curr_pt - prev_pt)) / edge_len
+        if dist > epsilon:
+            keep.append(i)
+    return vertices[keep] if keep else vertices
+
+
 def fit_rectangle(pts):
     """ Detect a rectangle from a closed stroke using RDP simplification.
 
@@ -249,21 +281,25 @@ def fit_rectangle(pts):
 
     bbox_diag = np.linalg.norm(pts.max(axis=0) - pts.min(axis=0))
     epsilon = bbox_diag * RDP_EPSILON_RATIO
-    simplified = _rdp_simplify(pts, epsilon)
 
-    # We expect 4 vertices (5 points counting the closing repeat, or 4 if the
-    # algorithm merged start/end). Accept 4 or 5 points.
+    # Explicitly close the polygon before simplification so RDP preserves
+    # identical first/last endpoints (RDP always keeps its first and last points).
+    pts_closed = np.vstack([pts, pts[0:1]])
+    simplified = _rdp_simplify(pts_closed, epsilon)
+
+    # We expect ~5 points (4 corners + closing duplicate).
     n = len(simplified)
-    if n < 4 or n > 6:
+    if n < 4 or n > 7:
         return None
 
-    # Close the polygon if needed
-    if np.linalg.norm(simplified[0] - simplified[-1]) > epsilon:
-        # Not closed after simplification
-        return None
+    # Drop the closing duplicate (first and last should now be identical)
+    if np.linalg.norm(simplified[0] - simplified[-1]) <= epsilon:
+        simplified = simplified[:-1]
 
-    # Use only unique vertices (dropping the closing duplicate)
-    vertices = simplified if np.linalg.norm(simplified[0] - simplified[-1]) > epsilon else simplified[:-1]
+    # If the user started mid-side, RDP may keep that point as a vertex
+    # because it is an endpoint.  Remove any vertex that is collinear with
+    # its neighbours (i.e. lies on a side, not at a corner).
+    vertices = _remove_collinear(simplified, epsilon)
     n_verts = len(vertices)
 
     if n_verts != 4:
