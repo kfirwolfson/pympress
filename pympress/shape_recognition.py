@@ -32,8 +32,11 @@ Supported shapes: line, circle, ellipse, rectangle.
 
 from __future__ import print_function, unicode_literals
 
+import logging
 import math
 import numpy as np
+
+logger = logging.getLogger(__name__)
 
 
 # --- Thresholds ---
@@ -60,7 +63,11 @@ def _is_closed(pts):
     bbox_diag = np.linalg.norm(pts.max(axis=0) - pts.min(axis=0))
     if bbox_diag < 1e-9:
         return False
-    return d / bbox_diag < CLOSURE_DISTANCE_RATIO
+    ratio = d / bbox_diag
+    closed = ratio < CLOSURE_DISTANCE_RATIO
+    if not closed:
+        logger.debug('_is_closed: ratio=%.4f > threshold %.2f — stroke is open', ratio, CLOSURE_DISTANCE_RATIO)
+    return closed
 
 
 def fit_line(pts):
@@ -92,7 +99,9 @@ def fit_line(pts):
     if extent < 1e-9:
         return None
 
-    if max_deviation / extent > LINE_MAX_DEVIATION_RATIO:
+    dev_ratio = max_deviation / extent
+    if dev_ratio > LINE_MAX_DEVIATION_RATIO:
+        logger.debug('fit_line: deviation_ratio=%.4f > threshold %.2f — rejected', dev_ratio, LINE_MAX_DEVIATION_RATIO)
         return None
 
     # Project first and last points onto line to get clean endpoints
@@ -144,6 +153,7 @@ def fit_ellipse(pts):
     semi_b = float(np.percentile(np.abs(transformed[:, 1]), 98))
 
     if semi_a < 1e-9 or semi_b < 1e-9:
+        logger.debug('fit_ellipse: degenerate axes (semi_a=%.6f, semi_b=%.6f)', semi_a, semi_b)
         return None
 
     # Quality check: how well do points lie on the ellipse?
@@ -152,6 +162,7 @@ def fit_ellipse(pts):
     radial_std = float(np.std(radial - 1.0))
 
     if radial_std > ELLIPSE_RADIAL_STD_RATIO:
+        logger.debug('fit_ellipse: radial_std=%.4f > threshold %.2f — rejected', radial_std, ELLIPSE_RADIAL_STD_RATIO)
         return None
 
     # Check if close enough to a circle
@@ -290,6 +301,7 @@ def fit_rectangle(pts):
     # We expect ~5 points (4 corners + closing duplicate).
     n = len(simplified)
     if n < 4 or n > 7:
+        logger.debug('fit_rectangle: rdp gave %d points (need 4-7) — rejected', n)
         return None
 
     # Drop the closing duplicate (first and last should now be identical)
@@ -303,6 +315,7 @@ def fit_rectangle(pts):
     n_verts = len(vertices)
 
     if n_verts != 4:
+        logger.debug('fit_rectangle: %d vertices after collinear removal (need 4) — rejected', n_verts)
         return None
 
     # Check all angles are close to 90°
@@ -311,6 +324,7 @@ def fit_rectangle(pts):
         v2 = vertices[(i - 1) % n_verts] - vertices[i]
         angle = _angle_between(v1, v2)
         if abs(angle - 90.0) > RECT_ANGLE_TOLERANCE:
+            logger.debug('fit_rectangle: angle[%d]=%.1f — too far from 90° — rejected', i, angle)
             return None
 
     # Return axis-aligned bounding box of the 4 vertices
@@ -341,6 +355,8 @@ def recognize_shape(points):
     pts = np.array(points, dtype=float)
 
     closed = _is_closed(pts)
+    bbox = pts.max(axis=0) - pts.min(axis=0)
+    logger.debug('recognize: n=%d, closed=%s, bbox=(%.4f, %.4f)', len(pts), closed, bbox[0], bbox[1])
 
     if closed:
         # Try rectangle first (most specific closed shape)
@@ -362,4 +378,5 @@ def recognize_shape(points):
     if line is not None:
         return ('line', tuple(line))
 
+    logger.debug('recognize: no shape matched')
     return None

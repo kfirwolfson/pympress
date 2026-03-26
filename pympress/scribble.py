@@ -849,15 +849,25 @@ class Scribbler(builder.Builder):
             widget (:class:`~Gtk.Widget`):  the widget for aspect ratio computation
         """
         if not self.scribble_list:
+            logger.debug('shape_recognition: no scribbles')
             return
 
         scribble = self.scribble_list[-1]
         if scribble[0] != "segment" or len(scribble[3]) < shape_recognition.MIN_POINTS_LINE:
+            logger.debug('shape_recognition: skip — type=%s, npoints=%d',
+                         scribble[0], len(scribble[3]) if scribble[3] else 0)
             return
 
+        logger.debug('shape_recognition: analyzing %d points', len(scribble[3]))
         result = shape_recognition.recognize_shape(scribble[3])
         if result is None:
+            logger.debug('shape_recognition: no shape detected — dumping points for diagnosis')
+            if logger.isEnabledFor(logging.DEBUG):
+                for i, p in enumerate(scribble[3]):
+                    logger.debug('  pt[%d] = (%.6f, %.6f)', i, p[0], p[1])
             return
+
+        logger.debug('shape_recognition: detected %s with params %s', result[0], result[1])
 
         shape_type, params = result
         old_state = copy.deepcopy(scribble[:])
