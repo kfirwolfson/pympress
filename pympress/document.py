@@ -696,7 +696,7 @@ class Document(object):
             self.scribbles = {}
             self.highlight_mode = builder.highlight_mode
             try:
-                f = open(self.path + '.pymp', "r")
+                f = open(self.path + '.pymp', "r", encoding='utf-8')
                 in_dict = json.load(f)
                 self.page_map = {int(key): val for key, val in in_dict.get('page_map', {}).items() if val < self.doc.get_n_pages()}
                 mapped_pages = self.page_map.values()
@@ -789,7 +789,7 @@ class Document(object):
             path = self.path
             if path[:7] == 'file://':
                 path = path[7:]
-            f = open(path + '.pymp', "w")
+            f = open(path + '.pymp', "w", encoding='utf-8')
             json.dump(out_dict, f, cls=RGBAEncoder)
 
     def export_pdf(self, filename=None):
@@ -807,7 +807,7 @@ class Document(object):
         if filename is None:
             filename = self.path + '.xopp'
         if f is None:
-            f = open(filename, "w")
+            f = open(filename, "w", encoding='utf-8')
         print("""<?xml version="1.0" standalone="no"?>
 <xournal creator="pympress" fileversion="4">
 <title>Xournal++ document - see https://github.com/xournalpp/xournalpp</title>

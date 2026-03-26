@@ -197,7 +197,7 @@ class Config(configparser.ConfigParser, object):  # python 2 fix
         for layout_name in self.layout:
             self.set('layout', layout_name, json.dumps(self.layout[layout_name], indent=4))
 
-        with open(self.path_to_config(), 'w') as configfile:
+        with open(self.path_to_config(), 'w', encoding='utf-8') as configfile:
             self.write(configfile)
 
 
