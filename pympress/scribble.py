@@ -34,6 +34,8 @@ import sympy
 import io
 import copy
 
+from pympress import shape_recognition
+
 import gi
 import cairo
 gi.require_version('Gtk', '3.0')
@@ -823,12 +825,100 @@ class Scribbler(builder.Builder):
             if self.drawing_mode in ["box", "ellipse"]:
                 self.scribble_list[-1][4] = [x[:] for x in self.scribble_list[-1][3]]
 
+            # Shape recognition: convert freehand to geometric shape when Shift is held
+            if self.drawing_mode == "draw" and state & Gdk.ModifierType.SHIFT_MASK:
+                self._try_recognize_shape(state, widget)
+
             self.scribble_drawing = False
             if self.have_pen and self.pen_pointer is not None:
                 self.pen_pointer[0] = []
             return True
 
         return False
+
+
+    def _try_recognize_shape(self, state, widget):
+        """ Attempt to convert the last freehand stroke to a geometric shape.
+
+        Called on BUTTON_RELEASE when Shift is held in draw mode.
+        Converts the scribble in-place and adds an undo entry so the user
+        can revert to the original freehand stroke.
+
+        Args:
+            state (`int`): modifier key state from the GTK event
+            widget (:class:`~Gtk.Widget`):  the widget for aspect ratio computation
+        """
+        if not self.scribble_list:
+            return
+
+        scribble = self.scribble_list[-1]
+        if scribble[0] != "segment" or len(scribble[3]) < shape_recognition.MIN_POINTS_LINE:
+            return
+
+        result = shape_recognition.recognize_shape(scribble[3])
+        if result is None:
+            return
+
+        shape_type, params = result
+        old_state = copy.deepcopy(scribble[:])
+
+        make_arrow = bool(state & Gdk.ModifierType.CONTROL_MASK)
+
+        if shape_type == 'line':
+            start, end = params
+            scribble[0] = "segment"
+            scribble[3] = [start, end]
+            scribble[4] = [list(map(min, zip(start, end))), list(map(max, zip(start, end)))]
+            # Truncate any extra elements from the freehand stroke
+            del scribble[5:]
+
+            if make_arrow:
+                aspect = widget.get_allocated_width() / widget.get_allocated_height() if widget else 1
+                line_vec = (start[0] - end[0], (start[1] - end[1]) / aspect)
+                angle = math.atan2(line_vec[1], line_vec[0])
+                scribble[3].append([
+                    end[0] + 0.04 * math.cos(angle + math.pi / 6),
+                    end[1] + 0.04 * math.sin(angle + math.pi / 6) * aspect])
+                scribble[3].append([
+                    end[0] + 0.04 * math.cos(angle - math.pi / 6),
+                    end[1] + 0.04 * math.sin(angle - math.pi / 6) * aspect])
+                scribble[3].append([end[0], end[1]])
+                scribble.append([])
+
+        elif shape_type == 'circle':
+            center, radius = params
+            corner1 = [center[0] - radius, center[1] - radius]
+            corner2 = [center[0] + radius, center[1] + radius]
+            scribble[0] = "ellipse"
+            scribble[3] = [corner1, corner2]
+            scribble[4] = [corner1[:], corner2[:]]
+            del scribble[5:]
+            scribble.append((0, 0, 0, 0))
+
+        elif shape_type == 'ellipse':
+            center, half_w, half_h = params
+            corner1 = [center[0] - half_w, center[1] - half_h]
+            corner2 = [center[0] + half_w, center[1] + half_h]
+            scribble[0] = "ellipse"
+            scribble[3] = [corner1, corner2]
+            scribble[4] = [corner1[:], corner2[:]]
+            del scribble[5:]
+            scribble.append((0, 0, 0, 0))
+
+        elif shape_type == 'rectangle':
+            corner1, corner2 = params
+            scribble[0] = "box"
+            scribble[3] = [corner1, corner2]
+            scribble[4] = [corner1[:], corner2[:]]
+            del scribble[5:]
+            scribble.append((0, 0, 0, 0))
+
+        else:
+            return
+
+        new_state = copy.deepcopy(scribble[:])
+        self.add_undo(('r', scribble, old_state, new_state))
+        self.redraw_current_slide()
 
 
     def draw_scribble(self, widget, cairo_context, draw_selected, pw):
@@ -1364,6 +1454,8 @@ class Scribbler(builder.Builder):
                     s[5] = oc
             elif op[0] == 'm':
                 adjust_scribbles(op[1], -op[2], -op[3])
+            elif op[0] == 'r':
+                op[1][:] = op[2]
 
             self.redraw_current_slide()
         return True
@@ -1393,6 +1485,8 @@ class Scribbler(builder.Builder):
                     s[5] = nc
             elif op[0] == 'm':
                 adjust_scribbles(op[1], op[2], op[3])
+            elif op[0] == 'r':
+                op[1][:] = op[3]
             self.undo_stack_pos = self.undo_stack_pos + 1
             if self.undo_stack_pos == len(self.undo_stack):
                 self.buttons["redo"].set_sensitive(False)
